@@ -392,11 +392,11 @@ function buildAuditWhere(filters: AuditFilters): Prisma.AuditLogWhereInput {
 
     if (term) {
       where.OR = [
-        { description: { contains: term } },
-        { userName: { contains: term } },
-        { userEmail: { contains: term } },
-        { action: { contains: term } },
-        { entityType: { contains: term } },
+        { description: { contains: term, mode: "insensitive" } },
+        { userName: { contains: term, mode: "insensitive" } },
+        { userEmail: { contains: term, mode: "insensitive" } },
+        { action: { contains: term, mode: "insensitive" } },
+        { entityType: { contains: term, mode: "insensitive" } },
       ];
     }
   }

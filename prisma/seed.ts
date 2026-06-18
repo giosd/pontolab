@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 async function main() {
   const passwordHash = await bcrypt.hash("admin123", 10);
 
-  await prisma.user.upsert({
+  const admin = await prisma.user.upsert({
     where: { email: "admin@pontolab.local" },
     update: {
       name: "Admin",
@@ -21,6 +21,14 @@ async function main() {
       role: "ADMIN",
       active: true,
     },
+    select: { id: true },
+  });
+
+  // Configurações iniciais (metas / banco de horas) do admin.
+  await prisma.userSettings.upsert({
+    where: { userId: admin.id },
+    update: {},
+    create: { userId: admin.id },
   });
 
   // Equipe padrão para usuários existentes (SPEC 13).

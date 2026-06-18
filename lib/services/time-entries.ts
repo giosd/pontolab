@@ -74,7 +74,7 @@ export async function getTimeEntries(
   const where: {
     userId?: string;
     activity?: string;
-    task?: { contains: string };
+    task?: { contains: string; mode: "insensitive" };
     date?: { gte?: Date; lte?: Date };
     status?: string;
     user?: { teamId: string };
@@ -91,7 +91,7 @@ export async function getTimeEntries(
   }
 
   if (filters.task) {
-    where.task = { contains: filters.task };
+    where.task = { contains: filters.task, mode: "insensitive" };
   }
 
   if (filters.startDate || filters.endDate) {
