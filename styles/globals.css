@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f0f8ff;
+  --foreground: #1e5f7a;
+  --card: #ffffff;
+  --border: #d6eef8;
+  --primary: #4ea8de;
+  --primary-light: #89cff0;
+  --primary-dark: #1e5f7a;
+
+  --app-bg: #f0f8ff;
+  --app-card: #ffffff;
+  --app-card-secondary: #f5fbff;
+  --app-border: #d9eef9;
+  --app-text: #1e5f7a;
+  --app-text-muted: #38a8d8;
+  --app-primary: #4ea8de;
+  --app-overlay: rgb(30 95 122 / 0.4);
+}
+
+.dark {
+  --background: #071923;
+  --foreground: #eaf8ff;
+  --card: #0d2533;
+  --border: #1f4e66;
+  --primary: #4ea8de;
+  --primary-light: #89cff0;
+  --primary-dark: #9ccde0;
+
+  --app-bg: #071923;
+  --app-card: #0d2533;
+  --app-card-secondary: #123447;
+  --app-border: #1f4e66;
+  --app-text: #eaf8ff;
+  --app-text-muted: #9ccde0;
+  --app-primary: #4ea8de;
+  --app-overlay: rgb(0 0 0 / 0.6);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}

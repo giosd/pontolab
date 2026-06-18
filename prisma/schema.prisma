@@ -1,0 +1,230 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Team {
+  id   String  @id @default(cuid())
+  name String
+
+  active Boolean @default(true)
+
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+
+  @@index([active])
+}
+
+model User {
+  id             String        @id @default(cuid())
+  name           String
+  email          String?       @unique
+  passwordHash   String?
+  role           String        @default("USER")
+  active         Boolean       @default(true)
+  sessionVersion Int           @default(1)
+  lastLoginAt    DateTime?
+  createdAt      DateTime      @default(now())
+
+  teamId      String?
+  createdById String?
+
+  entries             TimeEntry[]
+  importBatches       ImportBatch[]
+  modulePermissions   UserModulePermission[]
+  settings            UserSettings?
+  hourBalances        HourBalance[]
+  timerSessions       TimerSession[]
+  notifications       Notification[]
+
+  team         Team?  @relation(fields: [teamId], references: [id])
+  createdBy    User?  @relation("UserCreatedBy", fields: [createdById], references: [id])
+  createdUsers User[] @relation("UserCreatedBy")
+
+  @@index([role])
+  @@index([teamId])
+  @@index([createdById])
+}
+
+model UserSettings {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  dailyGoalHours   Float @default(8)
+  weeklyGoalHours  Float @default(40)
+  monthlyGoalHours Float @default(176)
+
+  allowNegativeBalance Boolean @default(true)
+
+  timerRoundingMinutes Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TimerSession {
+  id     String @id @default(cuid())
+  userId String
+
+  task     String
+  activity String
+  comment  String?
+
+  status String @default("RUNNING")
+
+  startedAt DateTime
+  pausedAt  DateTime?
+  resumedAt DateTime?
+  stoppedAt DateTime?
+
+  totalPausedSeconds Int @default(0)
+  elapsedSeconds     Int @default(0)
+
+  createdTimeEntryId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model HourBalance {
+  id     String @id @default(cuid())
+  userId String
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  expectedHours Float
+  workedHours   Float
+  balanceHours  Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model TimeEntry {
+  id        String   @id @default(cuid())
+  task      String
+  userId    String
+  date      DateTime
+  hours     Float
+  comment   String?
+  activity  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  status          String    @default("DRAFT")
+  submittedAt     DateTime?
+  submittedById   String?
+  approvedAt      DateTime?
+  approvedById    String?
+  rejectedAt      DateTime?
+  rejectedById    String?
+  rejectionReason String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([date])
+  @@index([activity])
+  @@index([status])
+  @@index([submittedAt])
+  @@index([approvedAt])
+}
+
+model ImportBatch {
+  id             String   @id @default(cuid())
+  fileName       String
+  totalRows      Int
+  validRows      Int
+  errorRows      Int
+  duplicatedRows Int
+  importedRows   Int
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model UserModulePermission {
+  id        String   @id @default(cuid())
+  userId    String
+  module    String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, module])
+  @@index([userId])
+}
+
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+
+  title   String
+  message String
+
+  type String
+
+  read Boolean @default(false)
+
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+
+  action      String
+  entityType  String
+  entityId    String?
+
+  description String?
+
+  oldData     Json?
+  newData     Json?
+
+  userId      String?
+  userName    String?
+  userEmail   String?
+
+  ipAddress   String?
+  userAgent   String?
+
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([entityType])
+  @@index([action])
+}
