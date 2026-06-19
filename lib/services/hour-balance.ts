@@ -3,7 +3,10 @@ import { endOfMonth, format, parseISO, startOfDay, endOfDay } from "date-fns";
 import { isAdmin, isAdminOrManager, type SessionUser } from "@/lib/auth";
 import {
   DEFAULT_GOALS,
+  computeBalanceHours,
+  computeExpectedHours,
   resolveBalanceStatuses,
+  roundHours,
   type BalanceScope,
 } from "@/lib/balance";
 import {
@@ -25,10 +28,6 @@ import {
   userGoalsSchema,
   type UserGoalsFormData as GoalsInput,
 } from "@/lib/validations";
-
-function roundHours(value: number) {
-  return Math.round(value * 100) / 100;
-}
 
 function dayKey(date: Date): string {
   return format(date, "yyyy-MM-dd");
@@ -209,11 +208,11 @@ export async function getHourBalanceData(options: {
   const dailyRows = buildDailyRows(start, end, goals.dailyGoalHours, workedByDay);
 
   const businessDays = getBusinessDays(start, end);
-  const expectedHours = roundHours(businessDays * goals.dailyGoalHours);
+  const expectedHours = computeExpectedHours(businessDays, goals.dailyGoalHours);
   const workedHours = roundHours(
     dailyRows.reduce((sum, row) => sum + row.workedHours, 0),
   );
-  const balanceHours = roundHours(workedHours - expectedHours);
+  const balanceHours = computeBalanceHours(workedHours, expectedHours);
 
   const accumulatedBalanceHours = await getAccumulatedBalance(
     userId,
@@ -410,35 +409,39 @@ export async function recalculateBalance(options: {
   });
 
   const workedHours = roundHours(aggregate._sum.hours ?? 0);
-  const expectedHours = roundHours(
-    getBusinessDays(start, end) * goals.dailyGoalHours,
+  const expectedHours = computeExpectedHours(
+    getBusinessDays(start, end),
+    goals.dailyGoalHours,
   );
-  const balanceHours = roundHours(workedHours - expectedHours);
+  const balanceHours = computeBalanceHours(workedHours, expectedHours);
 
   const periodStart = startOfDay(start);
   const periodEnd = endOfDay(end);
 
-  const existing = await prisma.hourBalance.findFirst({
-    where: { userId, periodStart, periodEnd },
-    select: { id: true },
-  });
-
-  if (existing) {
-    return prisma.hourBalance.update({
-      where: { id: existing.id },
-      data: { expectedHours, workedHours, balanceHours },
+  // Atômico: evita estados parciais e garante rollback se a escrita falhar.
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.hourBalance.findFirst({
+      where: { userId, periodStart, periodEnd },
+      select: { id: true },
     });
-  }
 
-  return prisma.hourBalance.create({
-    data: {
-      userId,
-      periodStart,
-      periodEnd,
-      expectedHours,
-      workedHours,
-      balanceHours,
-    },
+    if (existing) {
+      return tx.hourBalance.update({
+        where: { id: existing.id },
+        data: { expectedHours, workedHours, balanceHours },
+      });
+    }
+
+    return tx.hourBalance.create({
+      data: {
+        userId,
+        periodStart,
+        periodEnd,
+        expectedHours,
+        workedHours,
+        balanceHours,
+      },
+    });
   });
 }
 

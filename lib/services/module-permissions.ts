@@ -79,6 +79,10 @@ export async function userCanAccessModule(
   return getDefaultModulesForRole(role ?? "USER").includes(module);
 }
 
+type PrismaTransactionClient = Parameters<
+  Parameters<typeof prisma.$transaction>[0]
+>[0];
+
 export async function updateUserModules(
   userId: string,
   modules: AppModuleKey[],
@@ -86,8 +90,11 @@ export async function updateUserModules(
     editorUserId?: string;
     editorRole?: string;
   },
+  tx?: PrismaTransactionClient,
 ) {
-  const user = await prisma.user.findUnique({
+  const client = tx ?? prisma;
+
+  const user = await client.user.findUnique({
     where: { id: userId },
     select: { role: true },
   });
@@ -118,26 +125,36 @@ export async function updateUserModules(
     (module) => !ALWAYS_ENABLED_MODULES.includes(module.key),
   );
 
-  await prisma.$transaction(
-    assignableModules.map((module) =>
-      prisma.userModulePermission.upsert({
-        where: {
-          userId_module: {
+  // Quando já estamos dentro de uma transação, reaproveita o client (tx);
+  // caso contrário, abre a própria transação.
+  const runUpserts = (executor: PrismaTransactionClient) =>
+    Promise.all(
+      assignableModules.map((module) =>
+        executor.userModulePermission.upsert({
+          where: {
+            userId_module: {
+              userId,
+              module: module.key,
+            },
+          },
+          create: {
             userId,
             module: module.key,
+            enabled: enabledModules.has(module.key),
           },
-        },
-        create: {
-          userId,
-          module: module.key,
-          enabled: enabledModules.has(module.key),
-        },
-        update: {
-          enabled: enabledModules.has(module.key),
-        },
-      }),
-    ),
-  );
+          update: {
+            enabled: enabledModules.has(module.key),
+          },
+        }),
+      ),
+    );
+
+  if (tx) {
+    await runUpserts(tx);
+    return;
+  }
+
+  await prisma.$transaction((trx) => runUpserts(trx));
 }
 
 export async function createDefaultUserModules(userId: string) {

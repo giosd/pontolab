@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import {
@@ -8,9 +9,15 @@ import {
   logout,
   verifyPassword,
 } from "@/lib/auth";
+import { logger } from "@/lib/logger";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { logLogin, logLogout } from "@/lib/services/audit.service";
 import { prisma } from "@/lib/prisma";
 import { loginSchema } from "@/lib/validations";
+
+const GENERIC_LOGIN_ERROR = "Email ou senha inválidos.";
+const RATE_LIMITED_ERROR =
+  "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
 
 export async function loginAction(
   _prevState: { error: string },
@@ -21,17 +28,41 @@ export async function loginAction(
     password: formData.get("password"),
   });
 
-  if (!parsed.success) {
-    return { error: "Email ou senha inválidos." };
+  const requestHeaders = await headers();
+  const clientIp = getClientIp(requestHeaders);
+
+  const email = parsed.success
+    ? parsed.data.email.trim().toLowerCase()
+    : String(formData.get("email") ?? "")
+        .trim()
+        .toLowerCase();
+
+  // Limita por IP e por email normalizado (qualquer um excedido bloqueia).
+  const [ipLimit, emailLimit] = await Promise.all([
+    checkRateLimit(`login:ip:${clientIp}`),
+    email ? checkRateLimit(`login:email:${email}`) : null,
+  ]);
+
+  if (!ipLimit.allowed || (emailLimit && !emailLimit.allowed)) {
+    logger.warn({
+      message: "login_rate_limited",
+      context: { ip: clientIp },
+    });
+    return { error: RATE_LIMITED_ERROR };
   }
 
-  const email = parsed.data.email.trim().toLowerCase();
+  if (!parsed.success) {
+    logger.info({ message: "login_invalid_credentials", context: { ip: clientIp } });
+    return { error: GENERIC_LOGIN_ERROR };
+  }
+
   const user = await prisma.user.findUnique({
     where: { email },
   });
 
   if (!user?.active || !user.passwordHash || !user.email) {
-    return { error: "Email ou senha inválidos." };
+    logger.info({ message: "login_invalid_credentials", context: { ip: clientIp } });
+    return { error: GENERIC_LOGIN_ERROR };
   }
 
   const passwordValid = await verifyPassword(
@@ -40,7 +71,8 @@ export async function loginAction(
   );
 
   if (!passwordValid) {
-    return { error: "Email ou senha inválidos." };
+    logger.info({ message: "login_invalid_credentials", context: { ip: clientIp } });
+    return { error: GENERIC_LOGIN_ERROR };
   }
 
   const updated = await prisma.user.update({
@@ -60,6 +92,8 @@ export async function loginAction(
   await logLogin({
     user: { id: updated.id, name: updated.name, email: updated.email },
   });
+
+  logger.info({ message: "login_success", context: { userId: updated.id } });
 
   redirect("/dashboard");
 }

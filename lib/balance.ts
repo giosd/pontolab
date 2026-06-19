@@ -1,5 +1,11 @@
 import { TIME_ENTRY_STATUS } from "@/lib/time-entry-status";
 
+export {
+  roundHours,
+  computeExpectedHours,
+  computeBalanceHours,
+} from "@/lib/balance-math";
+
 export const DEFAULT_GOALS = {
   dailyGoalHours: 8,
   weeklyGoalHours: 40,

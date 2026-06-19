@@ -36,9 +36,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const stored = getStoredTheme();
-    setThemeState(stored);
-    syncTheme(stored);
+    const raf = requestAnimationFrame(() => {
+      const stored = getStoredTheme();
+      setThemeState(stored);
+      syncTheme(stored);
+    });
+
+    return () => cancelAnimationFrame(raf);
   }, [syncTheme]);
 
   useEffect(() => {

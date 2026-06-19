@@ -44,18 +44,18 @@ export function UsersManager({
   };
 
   const openEdit = (user: User) => {
-    startTransition(async () => {
-      setEditingUser(user);
+    // Abre imediatamente em modo edição com os dados já disponíveis.
+    setEditingUser(user);
+    setEditingModules(undefined);
+    setModalOpen(true);
 
-      if (user.role !== "ADMIN") {
+    // Carrega os módulos do usuário em segundo plano (não-admin).
+    if (user.role !== "ADMIN") {
+      startTransition(async () => {
         const modules = await getUserModulesAction(user.id);
         setEditingModules(modules);
-      } else {
-        setEditingModules(undefined);
-      }
-
-      setModalOpen(true);
-    });
+      });
+    }
   };
 
   const closeModal = () => {
@@ -222,7 +222,20 @@ export function UsersManager({
         onClose={closeModal}
       >
         <UserForm
-          user={editingUser}
+          key={editingUser?.id ?? "new"}
+          mode={editingUser ? "edit" : "create"}
+          userId={editingUser?.id}
+          initialData={
+            editingUser
+              ? {
+                  name: editingUser.name,
+                  email: editingUser.email ?? "",
+                  role: editingUser.role,
+                  active: editingUser.active,
+                  teamId: editingUser.teamId ?? null,
+                }
+              : undefined
+          }
           initialModules={editingModules}
           currentUserRole={currentUserRole}
           currentUserTeamId={currentUserTeamId}

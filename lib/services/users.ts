@@ -5,6 +5,10 @@ import {
   scopeUserWhere,
 } from "@/lib/access-scope";
 import {
+  resolveUpdateTeamId,
+  shouldUpdatePassword,
+} from "@/lib/user-update-helpers";
+import {
   createDefaultModulesForRole,
   updateUserModules,
 } from "@/lib/services/module-permissions";
@@ -159,37 +163,51 @@ export async function updateUser(
     throw new ScopeError("Gestor não pode atribuir o perfil de administrador.");
   }
 
-  const teamId =
-    session.role === "GESTOR"
-      ? (session.teamId ?? null)
-      : (data.teamId !== undefined ? data.teamId : target.teamId);
-
-  const password = parsed.password?.trim();
-
-  const user = await prisma.user.update({
-    where: { id },
-    data: {
-      name: parsed.name.trim(),
-      email: parsed.email.trim().toLowerCase(),
-      role: parsed.role,
-      active: parsed.active ?? true,
-      teamId,
-      ...(password
-        ? {
-            passwordHash: await hashPassword(password),
-            sessionVersion: { increment: 1 },
-          }
-        : {}),
-    },
-    select: userSelect,
+  const teamId = resolveUpdateTeamId({
+    editorRole: session.role,
+    editorTeamId: session.teamId ?? null,
+    requestedTeamId: data.teamId,
+    targetTeamId: target.teamId,
   });
 
-  if (user.role !== "ADMIN" && parsed.modules) {
-    await updateUserModules(id, parsed.modules as AppModuleKey[], {
-      editorUserId: session.userId,
-      editorRole: session.role,
+  const updatePassword = shouldUpdatePassword(parsed.password);
+
+  // Transação: dados do usuário + módulos atualizados de forma atômica.
+  const user = await prisma.$transaction(async (tx) => {
+    const updated = await tx.user.update({
+      where: { id },
+      data: {
+        name: parsed.name.trim(),
+        email: parsed.email.trim().toLowerCase(),
+        role: parsed.role,
+        active: parsed.active ?? true,
+        teamId,
+        ...(updatePassword
+          ? {
+              passwordHash: await hashPassword(parsed.password!.trim()),
+              sessionVersion: { increment: 1 },
+            }
+          : {}),
+      },
+      select: userSelect,
     });
-  }
+
+    // Só mexe nos módulos quando enviados explicitamente; evita zerar
+    // permissões por payload vazio acidental.
+    if (updated.role !== "ADMIN" && parsed.modules) {
+      await updateUserModules(
+        id,
+        parsed.modules as AppModuleKey[],
+        {
+          editorUserId: session.userId,
+          editorRole: session.role,
+        },
+        tx,
+      );
+    }
+
+    return updated;
+  });
 
   return mapUser(user);
 }

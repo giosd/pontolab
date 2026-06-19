@@ -24,10 +24,21 @@ import {
   type CreateUserFormData,
   type UpdateUserFormData,
 } from "@/lib/validations";
-import type { Team, User } from "@/types";
+import type { UserFormMode } from "@/lib/user-update-helpers";
+import type { Team } from "@/types";
+
+export interface UserFormInitialData {
+  name: string;
+  email: string;
+  role: string;
+  active: boolean;
+  teamId: string | null;
+}
 
 interface UserFormProps {
-  user?: User;
+  mode: UserFormMode;
+  userId?: string;
+  initialData?: UserFormInitialData;
   initialModules?: AppModuleKey[];
   currentUserRole: string;
   currentUserTeamId: string | null;
@@ -37,7 +48,9 @@ interface UserFormProps {
 }
 
 export function UserForm({
-  user,
+  mode,
+  userId,
+  initialData,
   initialModules,
   currentUserRole,
   currentUserTeamId,
@@ -46,23 +59,23 @@ export function UserForm({
   onCancel,
 }: UserFormProps) {
   const [isPending, startTransition] = useTransition();
-  const isEditing = Boolean(user);
+  const isEditing = mode === "edit";
   const isAdmin = currentUserRole === "ADMIN";
 
   const roleOptions = useMemo(() => {
     const allowed = allowedRolesForCreator(currentUserRole as UserRole);
     // Ao editar, garante que o papel atual apareça mesmo se fora do conjunto.
-    if (user?.role && !allowed.includes(user.role as UserRole)) {
-      return [user.role as UserRole, ...allowed];
+    if (initialData?.role && !allowed.includes(initialData.role as UserRole)) {
+      return [initialData.role as UserRole, ...allowed];
     }
     return allowed;
-  }, [currentUserRole, user?.role]);
+  }, [currentUserRole, initialData?.role]);
 
   const defaultRole = (roleOptions[0] ?? "USER") as UserRole;
 
   const [selectedTeamId, setSelectedTeamId] = useState<string>(
     isAdmin
-      ? (user?.teamId ?? "")
+      ? (initialData?.teamId ?? "")
       : (currentUserTeamId ?? ""),
   );
 
@@ -74,21 +87,22 @@ export function UserForm({
     setError,
   } = useForm<CreateUserFormData | UpdateUserFormData>({
     resolver: zodResolver(isEditing ? updateUserSchema : createUserSchema),
-    defaultValues: isEditing
-      ? {
-          name: user?.name ?? "",
-          email: user?.email ?? "",
-          password: "",
-          role: (user?.role as CreateUserFormData["role"]) ?? defaultRole,
-          active: user?.active ?? true,
-        }
-      : {
-          name: "",
-          email: "",
-          password: "",
-          role: defaultRole,
-          active: true,
-        },
+    defaultValues:
+      isEditing && initialData
+        ? {
+            name: initialData.name,
+            email: initialData.email ?? "",
+            password: "",
+            role: initialData.role as CreateUserFormData["role"],
+            active: initialData.active,
+          }
+        : {
+            name: "",
+            email: "",
+            password: "",
+            role: defaultRole,
+            active: true,
+          },
   });
 
   const role = watch("role");
@@ -125,9 +139,10 @@ export function UserForm({
         modules: role !== "ADMIN" ? selectedModules : undefined,
       };
 
-      const result = isEditing
-        ? await updateUserAction(user!.id, payload as UpdateUserFormData)
-        : await createUserAction(payload as CreateUserFormData);
+      const result =
+        isEditing && userId
+          ? await updateUserAction(userId, payload as UpdateUserFormData)
+          : await createUserAction(payload as CreateUserFormData);
 
       if (!result.success) {
         setError("root", { message: result.error });
